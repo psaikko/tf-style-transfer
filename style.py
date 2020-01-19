@@ -5,7 +5,14 @@ from scipy.optimize import fmin_l_bfgs_b
 import time
 import argparse
 from glob import glob
+import tensorflow as tf
 
+# Workaround for tf 2.0 issue
+# https://stackoverflow.com/a/58684421
+physical_devices = tf.config.experimental.list_physical_devices('GPU')
+assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
+tf.config.experimental.set_memory_growth(physical_devices[0], True)
+tf.config.experimental.set
 from keras.applications import vgg19
 from keras import backend as K
 
@@ -106,7 +113,7 @@ def style_loss(style, combination):
     S = K.zeros((style.shape[-1], style.shape[-1]))
     for j in range(style.shape[0]):
         S = S + gram_matrix(style[j,:,:,:])
-    S = S / float(style.shape[0].value)
+    S = S / float(style.shape[0])
     print(S.shape)
     C = gram_matrix(combination)
     channels = 3
