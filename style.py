@@ -27,7 +27,7 @@ parser.add_argument('--content_weight', type=float, default=0.025, required=Fals
                     help='Content weight.')
 parser.add_argument('--style_weight', type=float, default=1.0, required=False,
                     help='Style weight.')
-parser.add_argument('--tv_weight', type=float, default=1.0, required=False,
+parser.add_argument('--tv_weight', type=float, default=100.0, required=False,
                     help='Total Variation weight.')
 
 args = parser.parse_args()
@@ -50,7 +50,7 @@ img_ncols = int(width * img_nrows / height)
 def preprocess_image(image_path):
     img = tf.keras.preprocessing.image.load_img(image_path, target_size=(img_nrows, img_ncols))
     img = tf.keras.preprocessing.image.img_to_array(img)
-    img = np.expand_dims(img, axis=0)  
+    img = np.expand_dims(img, axis=0)
     img = tf.keras.applications.vgg19.preprocess_input(img)
     return img
 
@@ -67,7 +67,6 @@ def deprocess_image(x):
     return x
 
 # get tensor representations of our images
-
 base_image = tf.keras.backend.variable(preprocess_image(base_image_path))
 style_reference_images = [tf.keras.backend.variable(preprocess_image(path)) for path in glob(style_reference_image_path)]
 
@@ -75,17 +74,14 @@ style_reference_images = [tf.keras.backend.variable(preprocess_image(path)) for 
 combination_image = tf.keras.backend.placeholder((1, img_nrows, img_ncols, 3))
 
 # combine the 3 images into a single Keras tensor
-input_tensor = tf.concat([base_image]+
-                              style_reference_images+
-                              [combination_image], axis=0)
+input_tensor = tf.concat([base_image]+style_reference_images+[combination_image], axis=0)
 
 # build the VGG19 network with our 3 images as input
 # the model will be loaded with pre-trained ImageNet weights
-model = tf.keras.applications.vgg19.VGG19(input_tensor=input_tensor,
-                    weights='imagenet', include_top=False)
+model = tf.keras.applications.vgg19.VGG19(input_tensor=input_tensor, weights='imagenet', include_top=False)
 print('Model loaded.')
 
-# get the symbolic outputs of each "key" layer (we gave them unique names).
+# get the symbolic outputs of each "key" layer
 outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
 
 # compute the neural style loss
@@ -102,34 +98,27 @@ def gram_matrix(x):
 # feature maps from the style reference image
 # and from the generated image
 def style_loss(style, combination):
-    print("foo")
-    assert tf.keras.backend.ndim(style) == 4
-    assert tf.keras.backend.ndim(combination) == 3
-    print(style.shape)
-    #S = K.sum([gram_matrix(style[j]) for j in range(style.shape[0])])
-    S = tf.keras.backend.zeros((style.shape[-1], style.shape[-1]))
-    for j in range(style.shape[0]):
-        S = S + gram_matrix(style[j,:,:,:])
-    S = S / float(style.shape[0])
-    print(S.shape)
+    assert len(style.shape) == 4
+    assert len(combination.shape) == 3
+
+    S = tf.zeros((style.shape[-1], style.shape[-1]))
+    S = tf.add_n([gram_matrix(style[j,:,:,:]) for j in range(style.shape[0])]) / float(style.shape[0])
+
     C = gram_matrix(combination)
     channels = 3
     size = img_nrows * img_ncols
-    return tf.keras.backend.sum(tf.keras.backend.square(S - C)) / (4.0 * (channels ** 2) * (size ** 2))
+    return tf.reduce_sum(tf.square(S - C)) / (4.0 * (channels ** 2) * (size ** 2))
 
 # an auxiliary loss function
 # designed to maintain the "content" of the
 # base image in the generated image
 def content_loss(base, combination):
-    return tf.keras.backend.sum(tf.keras.backend.square(combination - base))
+    return tf.reduce_sum(tf.square(combination - base))
 
 # the 3rd loss function, total variation loss,
 # designed to keep the generated image locally coherent
 def total_variation_loss(x):
-    assert tf.keras.backend.ndim(x) == 4
-    a = tf.keras.backend.square(x[:, :-1, :-1, :] - x[:, 1:, :-1, :])
-    b = tf.keras.backend.square(x[:, :-1, :-1, :] - x[:, :-1, 1:, :])
-    return tf.keras.backend.sum(tf.keras.backend.pow(a + b, 1.25))
+    return tf.image.total_variation(x)
 
 # combine these loss functions into a single scalar
 loss = tf.keras.backend.variable(0.0)
@@ -153,11 +142,7 @@ loss = loss + total_variation_weight * total_variation_loss(combination_image)
 # get the gradients of the generated image wrt the loss
 grads = tf.keras.backend.gradients(loss, combination_image)
 
-outputs = [loss]
-if isinstance(grads, (list, tuple)):
-    outputs += grads
-else:
-    outputs.append(grads)
+outputs = [loss] + grads
 
 f_outputs = tf.keras.backend.function([combination_image], outputs)
 
@@ -166,11 +151,7 @@ def eval_loss_and_grads(x):
     x = x.reshape((1, img_nrows, img_ncols, 3))
     outs = f_outputs([x])
     loss_value = outs[0]
-
-    if len(outs[1:]) == 1:
-        grad_values = outs[1].flatten().astype('float64')
-    else:
-        grad_values = np.array(outs[1:]).flatten().astype('float64')
+    grad_values = outs[1].flatten().astype('float64')
     return loss_value, grad_values
 
 # this Evaluator class makes it possible
@@ -198,7 +179,6 @@ class Evaluator(object):
         self.loss_value = None
         self.grad_values = None
         return grad_values
-
 
 evaluator = Evaluator()
 
