@@ -1,5 +1,4 @@
 from __future__ import print_function
-from keras.preprocessing.image import load_img, save_img, img_to_array
 import numpy as np
 from scipy.optimize import fmin_l_bfgs_b
 import time
@@ -7,14 +6,13 @@ import argparse
 from glob import glob
 import tensorflow as tf
 
+tf.compat.v1.disable_eager_execution()
+
 # Workaround for tf 2.0 issue
 # https://stackoverflow.com/a/58684421
 physical_devices = tf.config.experimental.list_physical_devices('GPU')
 assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
-
-from keras.applications import vgg19
-from keras import backend as K
 
 parser = argparse.ArgumentParser(description='Neural style transfer with Keras.')
 parser.add_argument('base_image_path', metavar='base', type=str,
@@ -44,16 +42,16 @@ style_weight = args.style_weight
 content_weight = args.content_weight
 
 # dimensions of the generated picture.
-width, height = load_img(base_image_path).size
+width, height = tf.keras.preprocessing.image.load_img(base_image_path).size
 img_nrows = 400
 img_ncols = int(width * img_nrows / height)
 
 # util function to open, resize and format pictures into appropriate tensors
 def preprocess_image(image_path):
-    img = load_img(image_path, target_size=(img_nrows, img_ncols))
-    img = img_to_array(img)
-    img = np.expand_dims(img, axis=0)
-    img = vgg19.preprocess_input(img)
+    img = tf.keras.preprocessing.image.load_img(image_path, target_size=(img_nrows, img_ncols))
+    img = tf.keras.preprocessing.image.img_to_array(img)
+    img = np.expand_dims(img, axis=0)  
+    img = tf.keras.applications.vgg19.preprocess_input(img)
     return img
 
 # util function to convert a tensor into a valid image
@@ -69,21 +67,21 @@ def deprocess_image(x):
     return x
 
 # get tensor representations of our images
-base_image = K.variable(preprocess_image(base_image_path))
-style_reference_images = [K.variable(preprocess_image(path)) for path in glob(style_reference_image_path)]
-#style_reference_image = K.variable(preprocess_image(style_reference_image_path))
+
+base_image = tf.keras.backend.variable(preprocess_image(base_image_path))
+style_reference_images = [tf.keras.backend.variable(preprocess_image(path)) for path in glob(style_reference_image_path)]
 
 # this will contain our generated image
-combination_image = K.placeholder((1, img_nrows, img_ncols, 3))
+combination_image = tf.keras.backend.placeholder((1, img_nrows, img_ncols, 3))
 
 # combine the 3 images into a single Keras tensor
-input_tensor = K.concatenate([base_image]+
+input_tensor = tf.concat([base_image]+
                               style_reference_images+
                               [combination_image], axis=0)
 
 # build the VGG19 network with our 3 images as input
 # the model will be loaded with pre-trained ImageNet weights
-model = vgg19.VGG19(input_tensor=input_tensor,
+model = tf.keras.applications.vgg19.VGG19(input_tensor=input_tensor,
                     weights='imagenet', include_top=False)
 print('Model loaded.')
 
@@ -94,11 +92,9 @@ outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
 # first we need to define 4 util functions
 
 # the gram matrix of an image tensor (feature-wise outer product)
+# https://www.tensorflow.org/tutorials/generative/style_transfer
 def gram_matrix(x):
-    assert K.ndim(x) == 3
-    features = K.batch_flatten(K.permute_dimensions(x, (2, 0, 1)))
-    gram = K.dot(features, K.transpose(features))
-    return gram
+  return tf.linalg.einsum('ijc,ijd->cd', x, x)
 
 # the "style loss" is designed to maintain
 # the style of the reference image in the generated image.
@@ -106,11 +102,12 @@ def gram_matrix(x):
 # feature maps from the style reference image
 # and from the generated image
 def style_loss(style, combination):
-    assert K.ndim(style) == 4
-    assert K.ndim(combination) == 3
+    print("foo")
+    assert tf.keras.backend.ndim(style) == 4
+    assert tf.keras.backend.ndim(combination) == 3
     print(style.shape)
     #S = K.sum([gram_matrix(style[j]) for j in range(style.shape[0])])
-    S = K.zeros((style.shape[-1], style.shape[-1]))
+    S = tf.keras.backend.zeros((style.shape[-1], style.shape[-1]))
     for j in range(style.shape[0]):
         S = S + gram_matrix(style[j,:,:,:])
     S = S / float(style.shape[0])
@@ -118,24 +115,24 @@ def style_loss(style, combination):
     C = gram_matrix(combination)
     channels = 3
     size = img_nrows * img_ncols
-    return K.sum(K.square(S - C)) / (4.0 * (channels ** 2) * (size ** 2))
+    return tf.keras.backend.sum(tf.keras.backend.square(S - C)) / (4.0 * (channels ** 2) * (size ** 2))
 
 # an auxiliary loss function
 # designed to maintain the "content" of the
 # base image in the generated image
 def content_loss(base, combination):
-    return K.sum(K.square(combination - base))
+    return tf.keras.backend.sum(tf.keras.backend.square(combination - base))
 
 # the 3rd loss function, total variation loss,
 # designed to keep the generated image locally coherent
 def total_variation_loss(x):
-    assert K.ndim(x) == 4
-    a = K.square(x[:, :-1, :-1, :] - x[:, 1:, :-1, :])
-    b = K.square(x[:, :-1, :-1, :] - x[:, :-1, 1:, :])
-    return K.sum(K.pow(a + b, 1.25))
+    assert tf.keras.backend.ndim(x) == 4
+    a = tf.keras.backend.square(x[:, :-1, :-1, :] - x[:, 1:, :-1, :])
+    b = tf.keras.backend.square(x[:, :-1, :-1, :] - x[:, :-1, 1:, :])
+    return tf.keras.backend.sum(tf.keras.backend.pow(a + b, 1.25))
 
 # combine these loss functions into a single scalar
-loss = K.variable(0.0)
+loss = tf.keras.backend.variable(0.0)
 layer_features = outputs_dict['block5_conv2']
 base_image_features = layer_features[0, :, :, :]
 combination_features = layer_features[-1, :, :, :]
@@ -154,7 +151,7 @@ for layer_name in feature_layers:
 loss = loss + total_variation_weight * total_variation_loss(combination_image)
 
 # get the gradients of the generated image wrt the loss
-grads = K.gradients(loss, combination_image)
+grads = tf.keras.backend.gradients(loss, combination_image)
 
 outputs = [loss]
 if isinstance(grads, (list, tuple)):
@@ -162,13 +159,14 @@ if isinstance(grads, (list, tuple)):
 else:
     outputs.append(grads)
 
-f_outputs = K.function([combination_image], outputs)
-
+f_outputs = tf.keras.backend.function([combination_image], outputs)
 
 def eval_loss_and_grads(x):
+    global combination_image
     x = x.reshape((1, img_nrows, img_ncols, 3))
     outs = f_outputs([x])
     loss_value = outs[0]
+
     if len(outs[1:]) == 1:
         grad_values = outs[1].flatten().astype('float64')
     else:
@@ -217,7 +215,7 @@ for i in range(iterations):
     # save current generated image
     img = deprocess_image(x.copy())
     fname = result_prefix + '_at_iteration_%d.png' % i
-    save_img(fname, img)
+    tf.keras.preprocessing.image.save_img(fname, img)
     end_time = time.time()
     print('Image saved as', fname)
     print('Iteration %d completed in %ds' % (i, end_time - start_time))
