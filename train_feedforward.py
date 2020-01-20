@@ -2,6 +2,7 @@ import numpy as np
 import argparse
 from glob import glob
 import tensorflow as tf
+import tensorflow_datasets as tfds
 import matplotlib.pyplot as plt
 import feedforward
 
@@ -30,7 +31,8 @@ total_variation_weight = args.tv_weight
 style_weight = args.style_weight
 content_weight = args.content_weight
 
-# dimensions of the generated picture.
+# Using 256x256 images as in Johnson et al.
+# The trained network is fully convolutional, so it generalizes to higher resolution inputs
 img_nrows = 256
 img_ncols = 256
 
@@ -39,8 +41,7 @@ def preprocess_image(image_path):
     img = tf.keras.preprocessing.image.load_img(image_path, target_size=(img_nrows, img_ncols))
     img = tf.keras.preprocessing.image.img_to_array(img)
     img = np.expand_dims(img, axis=0)
-    img = tf.keras.applications.vgg19.preprocess_input(img)
-    return img
+    return tf.keras.applications.vgg19.preprocess_input(img)
 
 # util function to convert a tensor into a valid image
 def deprocess_image(x):
@@ -51,8 +52,7 @@ def deprocess_image(x):
     x[:, :, 2] += 123.68
     # 'BGR'->'RGB'
     x = x[:, :, ::-1]
-    x = np.clip(x, 0, 255).astype('uint8')
-    return x
+    return np.clip(x, 0, 255).astype('uint8')
 
 # https://www.tensorflow.org/tutorials/generative/style_transfer
 def vgg_layers(layer_names):
@@ -60,8 +60,7 @@ def vgg_layers(layer_names):
   vgg = tf.keras.applications.VGG19(include_top=False, weights='imagenet')
   vgg.trainable = False
   outputs = [vgg.get_layer(name).output for name in layer_names]
-  model = tf.keras.Model([vgg.input], outputs)
-  return model
+  return tf.keras.Model([vgg.input], outputs)
 
 # https://www.tensorflow.org/tutorials/generative/style_transfer
 @tf.function
@@ -89,10 +88,14 @@ def content_loss(base, combination):
 def total_variation_loss(x):
     return tf.image.total_variation(x)
 
+# Named layers of VGG model
+# Using deeper layers (=higher level features) for content loss, 
+# lower level features (=textures etc) for style loss
 content_layers = ['block5_conv2']
 style_layers = ['block1_conv1', 'block2_conv1', 'block3_conv1', 'block4_conv1', 'block5_conv1']
 layer_model = vgg_layers(style_layers + content_layers)
 
+# Wrap the loss function, including VGG model in a keras model
 class StyleLossModel(tf.keras.models.Model):
     def __init__(self, style_layers, content_layers, style_reference):
         super(StyleLossModel, self).__init__()
@@ -115,21 +118,21 @@ class StyleLossModel(tf.keras.models.Model):
             loss = loss + (style_weight / self.num_style_layers) * sl
         return loss
 
+# Create the loss evaluator and wrapper function
 loss_model = StyleLossModel(style_layers, content_layers, tf.constant(preprocess_image(style_reference_image_path)))
-ff = feedforward.make_network()
-
-def custom_loss(y_true, y_pred, sample_weight=None):
+def call_loss_model(y_true, y_pred, sample_weight=None):
     return loss_model(y_true, y_pred)
 
-ff.compile(loss=custom_loss, optimizer="adam")
+ff = feedforward.make_network()
+ff.compile(loss=call_loss_model, optimizer="adam")
 
 image = tf.constant(preprocess_image(base_image_path))
-opt = tf.optimizers.Adam(learning_rate=0.02, beta_1=0.99, epsilon=1e-1)
-
 plt.imshow(deprocess_image(ff(image)))
-plt.show()
+plt.pause(0.1)
 
 while True:
+    # Note: not training an identity function!
+    # Custom loss function for the output is wrt. the input image
     ff.fit([image], [image], epochs=10)
     plt.imshow(deprocess_image(ff(image)))
     plt.pause(0.1)
