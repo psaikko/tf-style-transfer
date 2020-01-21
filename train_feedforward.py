@@ -13,8 +13,6 @@ assert len(physical_devices) > 0, "Not enough GPU hardware devices available"
 tf.config.experimental.set_memory_growth(physical_devices[0], True)
 
 parser = argparse.ArgumentParser(description='Train a style transfer network with tf.keras')
-parser.add_argument('base_image_path', metavar='base', type=str,
-                    help='Path to the image to transform.')
 parser.add_argument('style_reference_image_path', metavar='ref', type=str,
                     help='Path to the style reference image.')
 parser.add_argument('--content_weight', type=float, default=0.025, required=False,
@@ -25,7 +23,6 @@ parser.add_argument('--tv_weight', type=float, default=100.0, required=False,
                     help='Total Variation weight.')
 
 args = parser.parse_args()
-base_image_path = args.base_image_path
 style_reference_image_path = args.style_reference_image_path
 total_variation_weight = args.tv_weight
 style_weight = args.style_weight
@@ -132,19 +129,33 @@ ff.compile(loss=call_loss_model, optimizer="adam")
 # We use only the images data, any diverse set of images could be used. 
 # 
 coco_train, info = tfds.load(name="coco", split="train", with_info=True)
-tfds.show_examples(info, coco_train)
-
-image = tf.constant(preprocess_image(base_image_path))
-plt.imshow(deprocess_image(ff(image)))
-plt.pause(0.1)
 
 def resize(x): return tf.image.resize(x, (img_nrows, img_ncols))
 def get_image(x): return x["image"]
 feed = coco_train.repeat().map(get_image).map(resize).map(tf.keras.applications.vgg19.preprocess_input).shuffle(42).batch(8)
+i = 0
 
+fig, ax = plt.subplots(3,2)
 for batch in feed: 
     # Note: not training an identity function!
     # Custom loss function for the output is wrt. the input image
     ff.fit(batch, batch)
-    plt.imshow(deprocess_image(ff(image)))
-    plt.pause(0.1)
+    fig.suptitle("Iteration %d" % i)
+    for j in range(3):
+        plt.subplot(331+3*j)
+        plt.cla()
+        plt.imshow(deprocess_image(batch[j]))
+        plt.axis('off')
+        plt.subplot(332+3*j)
+        plt.cla()
+        plt.imshow(deprocess_image(ff(tf.expand_dims(batch[j], axis=0))))
+        plt.axis('off')
+    plt.pause(0.01)
+
+    if i % 1000 == 0:
+        ff.save_weights("checkpoints/%d" % i)
+        plt.savefig("checkpoints/%d.png" % i)
+    if i > 20000:
+        break
+    i += 1
+    
