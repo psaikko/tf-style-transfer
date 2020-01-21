@@ -126,13 +126,25 @@ def call_loss_model(y_true, y_pred, sample_weight=None):
 ff = feedforward.make_network()
 ff.compile(loss=call_loss_model, optimizer="adam")
 
+#
+# Training on the MS-COCO dataset
+# as in https://cs.stanford.edu/people/jcjohns/papers/eccv16/JohnsonECCV16.pdf
+# We use only the images data, any diverse set of images could be used. 
+# 
+coco_train, info = tfds.load(name="coco", split="train", with_info=True)
+tfds.show_examples(info, coco_train)
+
 image = tf.constant(preprocess_image(base_image_path))
 plt.imshow(deprocess_image(ff(image)))
 plt.pause(0.1)
 
-while True:
+def resize(x): return tf.image.resize(x, (img_nrows, img_ncols))
+def get_image(x): return x["image"]
+feed = coco_train.repeat().map(get_image).map(resize).map(tf.keras.applications.vgg19.preprocess_input).shuffle(42).batch(8)
+
+for batch in feed: 
     # Note: not training an identity function!
     # Custom loss function for the output is wrt. the input image
-    ff.fit([image], [image], epochs=10)
+    ff.fit(batch, batch)
     plt.imshow(deprocess_image(ff(image)))
     plt.pause(0.1)
