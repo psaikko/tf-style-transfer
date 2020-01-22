@@ -25,9 +25,9 @@ parser.add_argument('--iter', type=int, default=10, required=False,
                     help='Number of iterations to run.')
 parser.add_argument('--content_weight', type=float, default=0.025, required=False,
                     help='Content weight.')
-parser.add_argument('--style_weight', type=float, default=1.0, required=False,
+parser.add_argument('--style_weight', type=float, default=10.0, required=False,
                     help='Style weight.')
-parser.add_argument('--tv_weight', type=float, default=100.0, required=False,
+parser.add_argument('--tv_weight', type=float, default=1.0, required=False,
                     help='Total Variation weight.')
 
 args = parser.parse_args()
@@ -48,7 +48,7 @@ img_ncols = int(width * img_nrows / height)
 
 # util function to open, resize and format pictures into appropriate tensors
 def preprocess_image(image_path):
-    img = tf.keras.preprocessing.image.load_img(image_path, target_size=(img_nrows, img_ncols))
+    img = tf.keras.preprocessing.image.load_img(image_path, target_size=(img_nrows, img_ncols), interpolation="bicubic")
     img = tf.keras.preprocessing.image.img_to_array(img)
     img = np.expand_dims(img, axis=0)
     img = tf.keras.applications.vgg19.preprocess_input(img)
@@ -87,10 +87,10 @@ outputs_dict = dict([(layer.name, layer.output) for layer in model.layers])
 # compute the neural style loss
 # first we need to define 4 util functions
 
-# the gram matrix of an image tensor (feature-wise outer product)
-# https://www.tensorflow.org/tutorials/generative/style_transfer
+# The gram matrix of an image tensor (feature-wise outer product)
+# More compact implementation from https://www.tensorflow.org/tutorials/generative/style_transfer
 def gram_matrix(x):
-  return tf.linalg.einsum('ijc,ijd->cd', x, x)
+    return tf.linalg.einsum('sijc,sijd->scd', x, x)
 
 # the "style loss" is designed to maintain
 # the style of the reference image in the generated image.
@@ -101,10 +101,8 @@ def style_loss(style, combination):
     assert len(style.shape) == 4
     assert len(combination.shape) == 3
 
-    S = tf.zeros((style.shape[-1], style.shape[-1]))
-    S = tf.add_n([gram_matrix(style[j,:,:,:]) for j in range(style.shape[0])]) / float(style.shape[0])
-
-    C = gram_matrix(combination)
+    S = tf.reduce_mean(gram_matrix(style), axis=0)
+    C = gram_matrix(tf.expand_dims(combination, axis=0))
     channels = 3
     size = img_nrows * img_ncols
     return tf.reduce_sum(tf.square(S - C)) / (4.0 * (channels ** 2) * (size ** 2))
@@ -128,8 +126,7 @@ combination_features = layer_features[-1, :, :, :]
 loss = loss + content_weight * content_loss(base_image_features,
                                             combination_features)
 
-feature_layers = ['block1_conv1', 'block2_conv1',
-                  'block3_conv1', 'block4_conv1',
+feature_layers = ['block1_conv1','block2_conv1','block3_conv1', 'block4_conv1',
                   'block5_conv1']
 for layer_name in feature_layers:
     layer_features = outputs_dict[layer_name]
@@ -147,7 +144,6 @@ outputs = [loss] + grads
 f_outputs = tf.keras.backend.function([combination_image], outputs)
 
 def eval_loss_and_grads(x):
-    global combination_image
     x = x.reshape((1, img_nrows, img_ncols, 3))
     outs = f_outputs([x])
     loss_value = outs[0]
@@ -190,11 +186,11 @@ for i in range(iterations):
     print('Start of iteration', i)
     start_time = time.time()
     x, min_val, info = fmin_l_bfgs_b(evaluator.loss, x.flatten(),
-                                     fprime=evaluator.grads, maxfun=20)
+                                     fprime=evaluator.grads, maxfun=100)
     print('Current loss value:', min_val)
     # save current generated image
     img = deprocess_image(x.copy())
-    fname = result_prefix + '_at_iteration_%d.png' % i
+    fname = '%s_%d.png' % (result_prefix, i)
     tf.keras.preprocessing.image.save_img(fname, img)
     end_time = time.time()
     print('Image saved as', fname)
