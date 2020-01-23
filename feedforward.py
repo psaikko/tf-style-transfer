@@ -32,8 +32,14 @@ def make_network(scale=32):
     # Johnson et al. suggests reflection padding
     y = tf.pad(x, [[0,0], [40,40], [40,40], [0,0] ], 'REFLECT')
     y = tf.keras.layers.Conv2D(filters=scale, kernel_size=(9,9), strides=1, padding="same")(y)
+    y = tfa.layers.InstanceNormalization()(y)
+    y = tf.keras.activations.relu(y)
     y = tf.keras.layers.Conv2D(filters=scale*2, kernel_size=(3,3), strides=2, padding="same")(y)
+    y = tfa.layers.InstanceNormalization()(y)
+    y = tf.keras.activations.relu(y)
     y = tf.keras.layers.Conv2D(filters=scale*4, kernel_size=(3,3), strides=2, padding="same")(y)
+    y = tfa.layers.InstanceNormalization()(y)
+    y = tf.keras.activations.relu(y)
     y = ResidualBlock(scale*4)(y)
     y = ResidualBlock(scale*4)(y)
     y = ResidualBlock(scale*4)(y)
@@ -41,8 +47,15 @@ def make_network(scale=32):
     y = ResidualBlock(scale*4)(y)
     # equivalent to "fractionally strided convolutions"
     y = tf.keras.layers.Conv2DTranspose(filters=scale*2, kernel_size=(3,3), strides=2, padding="same")(y)
+    y = tfa.layers.InstanceNormalization()(y)
+    y = tf.keras.activations.relu(y)
     y = tf.keras.layers.Conv2DTranspose(filters=scale, kernel_size=(3,3), strides=2, padding="same")(y)
+    y = tfa.layers.InstanceNormalization()(y)
+    y = tf.keras.activations.relu(y)
     y = tf.keras.layers.Conv2DTranspose(filters=3, kernel_size=(9,9), strides=1, padding="same")(y)
+    y = tfa.layers.InstanceNormalization()(y)
+    y = tf.keras.activations.tanh(y)
+    y = y * 127.5
     
     model = tf.keras.Model(inputs=x, outputs=y)
     model.summary()
