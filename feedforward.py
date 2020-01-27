@@ -28,7 +28,7 @@ class ResidualBlock(tf.keras.layers.Layer):
         return tf.keras.backend.sum([x, res], axis=0)
 
 def make_network(scale=32):
-    x = tf.keras.layers.Input((256,256,3))
+    x = tf.keras.layers.Input((None,None,3))
     # Johnson et al. suggests reflection padding
     y = tf.pad(x, [[0,0], [40,40], [40,40], [0,0] ], 'REFLECT')
     y = tf.keras.layers.Conv2D(filters=scale, kernel_size=(9,9), strides=1, padding="same")(y)
