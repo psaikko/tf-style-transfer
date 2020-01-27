@@ -3,7 +3,7 @@
 This repository contains my experiments with image style transfer using neural networks.
 
 To run all the scripts, at least the following are required
-- `pip install matplotlib pillow tensorflow-gpu tensorflow-datasets tensorflow-addons`
+- `pip install matplotlib pillow tensorflow-gpu tensorflow-datasets tensorflow-addons opencv-python`
 - NVIDIA [CUDA library](https://developer.nvidia.com/cuda-toolkit)
 - NVIDIA [cuDNN library](https://developer.nvidia.com/cudnn)
 
@@ -78,6 +78,7 @@ Files:
 - [feedforward.py](./feedforward.py)
 - [train_feedforward.py](./train_feedforward.py)
 - [transfer_feedforward.py](./transfer_feedforward.py)
+- [webcam_demo.py](./webcam_demo.py)
 
 A clear disadvantage of the previous style transfer method is that generating the result is a computationally expensive optimization problem, using gradients wrt. the style loss to iteratively update the input image. Johnson et al. ["Perceptual Losses for Real-Time Style Transfer
 and Super-Resolution", 2016](https://cs.stanford.edu/people/jcjohns/eccv16/) use this style loss to instead train a feedforward network to perform the style transfer. I reimplement this setup in tensorflow.
@@ -98,4 +99,26 @@ For example, after training on `img/starry.jpg` for 40000 iterations:
 
 `python transfer_feedforward.py img/animals.jpg checkpoints/40000`
 
-Results coming soon... 
+<table>
+<tr>
+    <td>
+    </td>
+    <td>
+        <img src="img/starry.jpg" width="200" height="150">
+    </td>
+    <td>
+        <img src="img/wave.jpg" width="200" height="150">
+    </td>
+</tr>
+<tr>
+    <td>
+        <img src="img/animals.jpg" width="200" height="150">
+    </td>
+    <td>
+        <img src="img/ff-starry.jpg" width="200" height="150">
+    </td>
+    <td>
+        <img src="img/ff-wave.jpg" width="200" height="150">
+    </td>
+</tr>
+</table>
