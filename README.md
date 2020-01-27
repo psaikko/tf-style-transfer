@@ -82,4 +82,20 @@ Files:
 A clear disadvantage of the previous style transfer method is that generating the result is a computationally expensive optimization problem, using gradients wrt. the style loss to iteratively update the input image. Johnson et al. ["Perceptual Losses for Real-Time Style Transfer
 and Super-Resolution", 2016](https://cs.stanford.edu/people/jcjohns/eccv16/) use this style loss to instead train a feedforward network to perform the style transfer. I reimplement this setup in tensorflow.
 
-Description coming soon ...
+### Feedforward network
+The feedforward network implemented in [feedforward.py](./feedforward.py) is based on the description of Johnson et al. (in 
+[paper supplementary material](https://web.eecs.umich.edu/~justincj/papers/eccv16/JohnsonECCV16Supplementary.pdf). We include the instance normalization trick of [Ulyanov et al.](https://arxiv.org/abs/1607.08022) for speeding up training and reducing the number of convolution kernels needed. 
+
+### Training
+The style transfer network is trained by using the style information from the VGG network as a custom loss function. 
+Rather than optimizing the input image to minimize style loss, we instead optimize the weights of the feedforward network 
+to produce the desired effect. The network is trained on a diverse set of images from the [MS-COCO](http://cocodataset.org/#home) dataset. These images are preprocessed and shuffled with the tf.data pipeline. As suggested in the paper, training is done with a batch size of 4 for a total of 2 epochs. Checkpoints are saved every 1000 iterations.
+(Note: the [training script](./train_feedforward.py) downloads the ~38G dataset on first run)
+
+### Transferring
+After training, the feedforward network can be used to apply style transfer to input images in real-time. 
+For example, after training on `img/starry.jpg` for 40000 iterations:
+
+`python transfer_feedforward.py img/animals.jpg checkpoints/40000`
+
+Results coming soon... 
