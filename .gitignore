@@ -1,3 +1,5 @@
 env
 .vscode
 *.png
+checkpoints
+__pycache__
